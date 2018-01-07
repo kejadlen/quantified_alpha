@@ -87,7 +87,7 @@ out = ast.map { |node|
   when Transaction
     header = node.content.ljust(comment_col)
     header << "; #{node.comment}" unless node.comment.nil?
-    header.strip
+    header = header.strip
 
     [ header ].concat(
       node.postings.map { |posting|
