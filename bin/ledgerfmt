@@ -18,7 +18,6 @@ class Parser
       when @ss.scan(/;\s*((?~\n))\n/)
         journal << Comment.new(@ss[1])
       when @ss.scan(/(?!\s)((?~\n))\n/)
-        # content, comment = @ss[1].split(?;)
         content, comment = @ss[1].scan(/^(.+?)?(?:\s*;\s*(.+?)\s*)?$/)[0]
         postings = parse_postings
         journal << Transaction.new(content, comment, postings)
