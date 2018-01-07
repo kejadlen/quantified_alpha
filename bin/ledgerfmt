@@ -1,0 +1,104 @@
+#!/usr/bin/env ruby
+
+require "strscan"
+
+Comment = Struct.new(:comment)
+Transaction = Struct.new(:content, :comment, :postings)
+Posting = Struct.new(:account, :amount, :comment)
+
+class Parser
+  def initialize(input)
+    @ss = StringScanner.new(input)
+  end
+
+  def parse
+    journal = []
+    until @ss.eos?
+      case
+      when @ss.scan(/;\s*((?~\n))\n/)
+        journal << Comment.new(@ss[1])
+      when @ss.scan(/(?!\s)((?~\n))\n/)
+        # content, comment = @ss[1].split(?;)
+        content, comment = @ss[1].scan(/^(.+?)?(?:\s*;\s*(.+?)\s*)?$/)[0]
+        postings = parse_postings
+        journal << Transaction.new(content, comment, postings)
+      when @ss.scan(/\n/)
+      else
+        raise "Unexpected input: \"#{@ss.scan(/(?~\n)/)}\""
+      end
+    end
+    journal
+  end
+
+  private
+
+  def parse_postings
+    postings = []
+    until @ss.eos?
+      case
+      when @ss.scan(/\s{2,}((?~\n))\n/)
+        account, amount, comment = @ss[1].scan(/^(.+?)(?:\s{2,}(.+?))?(?:\s*;\s*(.+?)\s*)?$/)[0]
+        postings << Posting.new(account, amount, comment)
+      when @ss.scan(/\n/)
+        return postings
+      else
+        raise "Unexpected input: \"#{@ss.scan(/(?~\n)/)}\""
+      end
+    end
+    postings
+  end
+end
+
+ast = Parser.new(ARGF.read).parse
+
+amount_col = ast.map { |node|
+  case node
+  when Comment
+    0
+  when Transaction
+    node.postings.map { |posting|
+      2 + posting.account.size + 2
+    }.max
+  else
+    raise "Unexpected node: #{node.class}"
+  end
+}.max
+
+comment_col = ast.map { |node|
+  case node
+  when Comment
+    0
+  when Transaction
+    [
+      node.content.size + 1,
+      node.postings.map { |posting|
+        amount_col + (posting.amount || "").size + 2
+      }.max
+    ].max
+  else
+    raise "Unexpected node: #{node.class}"
+  end
+}.max
+
+out = ast.map { |node|
+  case node
+  when Comment
+    "; #{node.comment}"
+  when Transaction
+    header = node.content.ljust(comment_col)
+    header << "; #{node.comment}" unless node.comment.nil?
+    header.strip
+
+    [ header ].concat(
+      node.postings.map { |posting|
+        out = "  #{posting.account}".ljust(amount_col)
+        out << posting.amount unless posting.amount.nil?
+        out = out.rstrip.ljust(comment_col)
+        out << "; #{posting.comment}" unless posting.comment.nil?
+        out.rstrip
+      }
+    ).join("\n")
+  end
+}.join("\n\n")
+
+puts out

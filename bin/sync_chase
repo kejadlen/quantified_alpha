@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+
+require "date"
+require "io/console"
+
+$LOAD_PATH.unshift File.expand_path("../../lib", __FILE__)
+require "chase"
+require "ledger"
+require "qfx"
+
+def qfx_to_ledger(transactions)
+  transactions.map { |t|
+    postings = if t.amount > 0
+                 [
+                   Ledger::Posting.new(account: "liabilities:chase", amount: t.amount),
+                   Ledger::Posting.new(account: "assets"),
+                 ]
+               else
+                 tags = { fitid: t.fitid }
+                 [
+                   Ledger::Posting.new(account: "expenses:unaccounted", amount: -t.amount),
+                   Ledger::Posting.new(account: "liabilities:chase"),
+                 ]
+               end
+    Ledger::Transaction.new(
+      date: t.date,
+      description: t.name,
+      postings: postings,
+      tags: { fitid: t.fitid },
+    )
+  }
+end
+
+puts "TMP_DIR: #{TMP_DIR}"
+
+print "Username: "
+username = gets.chomp
+print "Password: "
+password = STDIN.noecho(&:gets).chomp
+puts
+
+date_range = ((Date.today - 14)..Date.today)
+
+puts "Downloading QFX..."
+chase = Chase.new(username, password)
+qfx_path = chase.download(date_range)
+
+puts "Parsing QFX..."
+qfx = File.read(qfx_path)
+parser = QFX::Parser.new(qfx)
+transactions = parser.parse.group_by {|t| t.date.strftime("journals/%Y-%m.journal") }
+
+transactions = transactions.map { |journal, transactions|
+  comments = (File.read(journal) rescue "").scan(/;(?~\n)/)
+  tags = comments.flat_map { |comment|
+    comment.scan(/([\w-]+):([^,\n]*)/).map { |k,v| [k.to_sym, v.strip] }
+  }
+  fitids = tags.select { |k,_| k == :fitid }.map(&:last)
+
+  transactions = transactions.reject { |t| fitids.include?(t.fitid) }
+  transactions = transactions.sort_by(&:date)
+  [journal, transactions]
+}.reject {|_, transactions| transactions.empty? }
+
+transactions.each do |journal, transactions|
+  transactions = qfx_to_ledger(transactions)
+
+  out = ["", "; vvv IMPORTED DATA BELOW vvv\n"]
+  out.concat(transactions)
+
+  File.open(journal, "a+") do |journal|
+    journal << out.join("\n")
+  end
+end
