@@ -30,6 +30,8 @@ class Chase
 
     visit "https://chase.com"
 
+    click_on "Sign in"
+
     within_frame(find("#logonbox")) do
       fill_in "Username", with: @username
       fill_in "Password", with: @password

@@ -48,7 +48,7 @@ qfx_path = chase.download(date_range)
 puts "Parsing QFX..."
 qfx = File.read(qfx_path)
 parser = QFX::Parser.new(qfx)
-transactions = parser.parse.group_by {|t| t.date.strftime("journals/%Y-%m.journal") }
+transactions = parser.parse.group_by {|t| t.date.strftime("var/%Y-%m.journal") }
 
 transactions = transactions.map { |journal, transactions|
   comments = (File.read(journal) rescue "").scan(/;(?~\n)/)
