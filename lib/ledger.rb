@@ -18,7 +18,7 @@ module Ledger
   Posting = Struct.new(:account, :amount, keyword_init: true) do
     def to_s
       out = [ account ]
-      out << "$%.2f" % amount unless amount.nil?
+      out << "%.2f USD" % amount unless amount.nil?
       out.join("  ")
     end
   end

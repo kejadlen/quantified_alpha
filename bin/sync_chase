@@ -16,7 +16,6 @@ def qfx_to_ledger(transactions)
                    Ledger::Posting.new(account: "assets"),
                  ]
                else
-                 tags = { fitid: t.fitid }
                  [
                    Ledger::Posting.new(account: "expenses:unaccounted", amount: -t.amount),
                    Ledger::Posting.new(account: "liabilities:chase"),
@@ -26,7 +25,7 @@ def qfx_to_ledger(transactions)
       date: t.date,
       description: t.name,
       postings: postings,
-      tags: { fitid: t.fitid },
+      tags: { chase_id: t.fitid },
     )
   }
 end
@@ -41,9 +40,12 @@ puts
 
 date_range = ((Date.today - 14)..Date.today)
 
+puts "Logging on"
+chase = Chase.new
+chase.logon(username, password)
+
 puts "Downloading QFX..."
-chase = Chase.new(username, password)
-qfx_path = chase.download(date_range)
+qfx_path = chase.download("CREDIT CARD", date_range)
 
 puts "Parsing QFX..."
 qfx = File.read(qfx_path)
@@ -55,9 +57,9 @@ transactions = transactions.map { |journal, transactions|
   tags = comments.flat_map { |comment|
     comment.scan(/([\w-]+):([^,\n]*)/).map { |k,v| [k.to_sym, v.strip] }
   }
-  fitids = tags.select { |k,_| k == :fitid }.map(&:last)
+  chase_ids = tags.select { |k,_| k == :chase_id }.map(&:last)
 
-  transactions = transactions.reject { |t| fitids.include?(t.fitid) }
+  transactions = transactions.reject { |t| chase_ids.include?(t.fitid) }
   transactions = transactions.sort_by(&:date)
   [journal, transactions]
 }.reject {|_, transactions| transactions.empty? }
@@ -65,10 +67,7 @@ transactions = transactions.map { |journal, transactions|
 transactions.each do |journal, transactions|
   transactions = qfx_to_ledger(transactions)
 
-  out = ["", "; vvv IMPORTED DATA BELOW vvv\n"]
-  out.concat(transactions)
-
   File.open(journal, "a+") do |journal|
-    journal << out.join("\n")
+    journal << "\n" << transactions.join("\n")
   end
 end

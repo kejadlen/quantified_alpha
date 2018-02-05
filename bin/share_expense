@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+require "bigdecimal"
+
+raw = ARGF.read
+from = BigDecimal(raw.scan(/([.\d]+) USD/).last[0])
+to = (from / 2).round(2)
+
+puts raw
+puts raw.sub(from.to_s(?F), "-#{to.to_s(?F)}")
+puts "  assets:shared:accounts receivable  #{to.to_s(?F)} USD"

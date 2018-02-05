@@ -4,7 +4,13 @@ require "strscan"
 
 Comment = Struct.new(:comment)
 Transaction = Struct.new(:content, :comment, :postings)
-Posting = Struct.new(:account, :amount, :comment)
+Posting = Struct.new(:account, :amount, :comment) do
+  def amount_int_part
+    return "" if amount.nil?
+
+    amount.scan(/^[^\d]*\d+/)[0]
+  end
+end
 
 class Parser
   def initialize(input)
@@ -50,12 +56,12 @@ end
 
 ast = Parser.new(ARGF.read).parse
 
-amount_col = ast.map { |node|
+amount_col = ast.map {|node|
   case node
   when Comment
     0
   when Transaction
-    node.postings.map { |posting|
+    node.postings.map {|posting|
       2 + posting.account.size + 2
     }.max
   else
@@ -63,14 +69,27 @@ amount_col = ast.map { |node|
   end
 }.max
 
-comment_col = ast.map { |node|
+ones_col = ast.map {|node|
+  case node
+  when Comment
+    0
+  when Transaction
+    node.postings.map {|posting|
+      posting.amount_int_part.size
+    }.max
+  else
+    raise "Unexpected node: #{node.class}"
+  end
+}.max
+
+comment_col = ast.map {|node|
   case node
   when Comment
     0
   when Transaction
     [
-      node.content.size + 1,
-      node.postings.map { |posting|
+      # node.content.size + 1,
+      node.postings.map {|posting|
         amount_col + (posting.amount || "").size + 2
       }.max
     ].max
@@ -79,18 +98,18 @@ comment_col = ast.map { |node|
   end
 }.max
 
-out = ast.map { |node|
+out = ast.map {|node|
   case node
   when Comment
     "; #{node.comment}"
   when Transaction
-    header = node.content.ljust(comment_col)
-    header << "; #{node.comment}" unless node.comment.nil?
+    header = node.content
+    header << " ; #{node.comment}" unless node.comment.nil?
     header = header.strip
 
     [ header ].concat(
-      node.postings.map { |posting|
-        out = "  #{posting.account}".ljust(amount_col)
+      node.postings.map {|posting|
+        out = "  #{posting.account}".ljust(amount_col + ones_col - posting.amount_int_part.size)
         out << posting.amount unless posting.amount.nil?
         out = out.rstrip.ljust(comment_col)
         out << "; #{posting.comment}" unless posting.comment.nil?

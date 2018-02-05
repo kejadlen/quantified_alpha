@@ -1,0 +1,93 @@
+#!/usr/bin/env ruby
+
+require "bigdecimal"
+require "io/console"
+
+$LOAD_PATH.unshift File.expand_path("../../lib", __FILE__)
+require "simple"
+require "ledger"
+
+Transaction = Struct.new(:uuid, :type, :description, :date, :amount) do
+  def self.from(json)
+    new(
+      json.fetch("uuid"),
+      json.fetch("bookkeeping_type"),
+      json.fetch("description"),
+      Time.at(json.fetch("times").fetch("when_recorded") / 1000.0),
+      BigDecimal(json.fetch("amounts").fetch("amount")) / 10000.0,
+    )
+  end
+
+  def to_ledger
+    postings = case type
+               when "credit"
+                 [
+                   Ledger::Posting.new(account: "assets:cash:simple", amount: amount),
+                   Ledger::Posting.new(account: "income:unaccounted"),
+                 ]
+               when "debit"
+                 [
+                   Ledger::Posting.new(account: "unaccounted", amount: amount),
+                   Ledger::Posting.new(account: "assets:cash:simple"),
+                 ]
+               else
+                 raise "Unknown transaction type: '#{type}'"
+               end
+    Ledger::Transaction.new(
+      date: date,
+      description: description,
+      postings: postings,
+      tags: { uuid: uuid },
+    )
+  end
+end
+
+# puts "tmp_dir: #{tmp_dir}"
+
+# print "username: "
+# username = gets.chomp
+# print "Password: "
+# password = STDIN.noecho(&:gets).chomp
+# puts
+
+# puts "Downloading JSON..."
+# simple = Simple.new
+# simple.login(username, password) do
+#   print "2-Factor Code: "
+#   gets.chomp
+# end
+# json_path = simple.download
+
+json_path = "2018-01-15-exported_transactions.json"
+
+puts "Parsing JSON..."
+json = JSON.load(File.read(json_path))
+puts json.fetch("transactions").map {|t| Transaction.from(t) }.map(&:to_ledger)
+
+# puts "Parsing QFX..."
+# qfx = File.read(qfx_path)
+# parser = QFX::Parser.new(qfx)
+# transactions = parser.parse.group_by {|t| t.date.strftime("var/%Y-%m.journal") }
+
+# transactions = transactions.map { |journal, transactions|
+#   comments = (File.read(journal) rescue "").scan(/;(?~\n)/)
+#   tags = comments.flat_map { |comment|
+#     comment.scan(/([\w-]+):([^,\n]*)/).map { |k,v| [k.to_sym, v.strip] }
+#   }
+#   fitids = tags.select { |k,_| k == :fitid }.map(&:last)
+
+#   transactions = transactions.reject { |t| fitids.include?(t.fitid) }
+#   transactions = transactions.sort_by(&:date)
+#   [journal, transactions]
+# }.reject {|_, transactions| transactions.empty? }
+
+# transactions.each do |journal, transactions|
+#   transactions = qfx_to_ledger(transactions)
+
+#   out = ["", "; vvv IMPORTED DATA BELOW vvv\n"]
+#   out.concat(transactions)
+
+#   File.open(journal, "a+") do |journal|
+#     journal << out.join("\n")
+#   end
+# end
